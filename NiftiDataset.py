@@ -38,6 +38,9 @@ class NiftiDataset(object):
       image_paths.append(os.path.join(self.data_dir,case,self.image_filename))
       label_paths.append(os.path.join(self.data_dir,case,self.label_filename))
 
+    print('Image Paths: {}'.format(image_paths))
+    print('Label Paths: {}'.format(label_paths))
+
     dataset = tf.data.Dataset.from_tensor_slices((image_paths,label_paths))
 
     dataset = dataset.map(lambda image_path, label_path: tuple(tf.py_func(

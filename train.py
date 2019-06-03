@@ -9,6 +9,7 @@ import os
 import VNet
 import math
 import datetime
+import sys
 
 # select gpu devices
 os.environ["CUDA_VISIBLE_DEVICES"] = "0" # e.g. "0,1,2", "0,2" 
@@ -18,9 +19,9 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('data_dir', './data',
     """Directory of stored data.""")
-tf.app.flags.DEFINE_string('image_filename','img.nii',
+tf.app.flags.DEFINE_string('image_filename','image.nii.gz',
     """Image filename""")
-tf.app.flags.DEFINE_string('label_filename','label.nii',
+tf.app.flags.DEFINE_string('label_filename','label.nii.gz',
     """Label filename""")
 tf.app.flags.DEFINE_integer('batch_size',1,
     """Size of batch""")               
@@ -28,7 +29,7 @@ tf.app.flags.DEFINE_integer('patch_size',128,
     """Size of a data patch""")
 tf.app.flags.DEFINE_integer('patch_layer',128,
     """Number of layers in data patch""")
-tf.app.flags.DEFINE_integer('epochs',999999999,
+tf.app.flags.DEFINE_integer('epochs',200,
     """Number of epochs for training""")
 tf.app.flags.DEFINE_string('log_dir', './tmp/log',
     """Directory where to write training and testing event logs """)
@@ -142,8 +143,8 @@ def train():
         global_step = tf.train.get_or_create_global_step()
 
         # patch_shape(batch_size, height, width, depth, channels)
-        input_batch_shape = (FLAGS.batch_size, FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer, 1) 
-        output_batch_shape = (FLAGS.batch_size, FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer, 1) 
+        input_batch_shape = (FLAGS.batch_size, FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer, 1)
+        output_batch_shape = (FLAGS.batch_size, FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer, 1)
         
         images_placeholder, labels_placeholder = placeholder_inputs(input_batch_shape,output_batch_shape)
 
@@ -165,7 +166,7 @@ def train():
             trainTransforms = [
                 NiftiDataset.StatisticalNormalization(2.5),
                 # NiftiDataset.Normalization(),
-                NiftiDataset.Resample((0.45,0.45,0.45)),
+                NiftiDataset.Resample((1.0,1.0,1.0)),
                 NiftiDataset.Padding((FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer)),
                 NiftiDataset.RandomCrop((FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer),FLAGS.drop_ratio,FLAGS.min_pixel),
                 NiftiDataset.RandomNoise()
@@ -186,7 +187,7 @@ def train():
             testTransforms = [
                 NiftiDataset.StatisticalNormalization(2.5),
                 # NiftiDataset.Normalization(),
-                NiftiDataset.Resample((0.45,0.45,0.45)),
+                NiftiDataset.Resample((1.0,1.0,1.0)),
                 NiftiDataset.Padding((FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer)),
                 NiftiDataset.RandomCrop((FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer),FLAGS.drop_ratio,FLAGS.min_pixel)
                 ]
@@ -448,9 +449,14 @@ def train():
                     except tf.errors.OutOfRangeError:
                         break
 
+            saver = tf.train.Saver()
+            save_path = saver.save(sess, "./tmp/model/model.ckpt")
+            print("Model saved in path: %s" % save_path)
+
         # close tensorboard summary writer
         train_summary_writer.close()
         test_summary_writer.close()
+
 
 def main(argv=None):
     if not FLAGS.restore_training:
@@ -464,10 +470,10 @@ def main(argv=None):
             tf.gfile.DeleteRecursively(FLAGS.checkpoint_dir)
         tf.gfile.MakeDirs(FLAGS.checkpoint_dir)
 
-        # # clear model directory
-        # if tf.gfile.Exists(FLAGS.model_dir):
-        #     tf.gfile.DeleteRecursively(FLGAS.model_dir)
-        # tf.gfile.MakeDirs(FLAGS.model_dir)
+        # clear model directory
+        if tf.gfile.Exists(FLAGS.model_dir):
+            tf.gfile.DeleteRecursively(FLAGS.model_dir)
+        tf.gfile.MakeDirs(FLAGS.model_dir)
 
     train()
 

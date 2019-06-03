@@ -17,17 +17,17 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0" # e.g. "0,1,2", "0,2"
 # tensorflow app flags
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('data_dir','./data_dental/evaluate',
+tf.app.flags.DEFINE_string('data_dir','./data/testing',
     """Directory of evaluation data""")
-tf.app.flags.DEFINE_string('image_filename','image.nii',
+tf.app.flags.DEFINE_string('image_filename','image.nii.gz',
     """Image filename""")
-tf.app.flags.DEFINE_string('model_path','./tmp_dental/ckpt/checkpoint-5665.meta',
+tf.app.flags.DEFINE_string('model_path','./tmp200/model/model.ckpt.meta',
     """Path to saved models""")
-tf.app.flags.DEFINE_string('checkpoint_path','./tmp_dental/ckpt/checkpoint-5665',
+tf.app.flags.DEFINE_string('checkpoint_path','./tmp200/model/model.ckpt',
     """Directory of saved checkpoints""")
-tf.app.flags.DEFINE_integer('patch_size',256,
+tf.app.flags.DEFINE_integer('patch_size',128,
     """Size of a data patch""")
-tf.app.flags.DEFINE_integer('patch_layer',32,
+tf.app.flags.DEFINE_integer('patch_layer',128,
     """Number of layers in data patch""")
 tf.app.flags.DEFINE_integer('stride_inplane', 128,
     """Stride size in 2D plane""")
@@ -38,6 +38,7 @@ tf.app.flags.DEFINE_integer('batch_size',1,
 
 def prepare_batch(image,ijk_patch_indices):
     image_batches = []
+    i = 0
     for batch in ijk_patch_indices:
         image_batch = []
         for patch in batch:
@@ -45,8 +46,12 @@ def prepare_batch(image,ijk_patch_indices):
             image_batch.append(image_patch)
 
         image_batch = np.asarray(image_batch)
-        image_batch = image_batch[:,:,:,:,np.newaxis]
-        image_batches.append(image_batch)
+        image_batch_new = image_batch[:,:,:,:,np.newaxis]
+        image_batches.append(image_batch_new)
+        if i == 0:
+            print('image_batch shape: {}'.format(image_batch.shape))
+            print('new image_batch shape: {}'.format(image_batch_new.shape))
+        i = i + 1
         
     return image_batches
 
@@ -60,7 +65,7 @@ def evaluate():
     transforms = [
         # NiftiDataset.Normalization(),
         NiftiDataset.StatisticalNormalization(2.5),
-        NiftiDataset.Resample(0.75),
+        NiftiDataset.Resample(1.0),
         NiftiDataset.Padding((FLAGS.patch_size, FLAGS.patch_size, FLAGS.patch_layer))      
         ]
 
@@ -116,6 +121,7 @@ def evaluate():
                 # convert image to numpy array
                 image_np = sitk.GetArrayFromImage(image_tfm)
                 image_np = np.asarray(image_np,np.float32)
+                print('Image Shape: {}'.format(image_np.shape))
 
                 label_np = sitk.GetArrayFromImage(label_tfm)
                 label_np = np.asarray(label_np,np.int32)
@@ -135,6 +141,9 @@ def evaluate():
                 inum = int(math.ceil((image_np.shape[0]-FLAGS.patch_size)/float(FLAGS.stride_inplane))) + 1 
                 jnum = int(math.ceil((image_np.shape[1]-FLAGS.patch_size)/float(FLAGS.stride_inplane))) + 1
                 knum = int(math.ceil((image_np.shape[2]-FLAGS.patch_layer)/float(FLAGS.stride_layer))) + 1
+
+                print('image_np shape: {}'.format(image_np.shape))
+                print('Sliding Window: ({}, {}, {})'.format(inum, jnum, knum))
 
                 patch_total = 0
                 ijk_patch_indices = []
@@ -169,11 +178,17 @@ def evaluate():
                             patch_total += 1
                 
                 batches = prepare_batch(image_np,ijk_patch_indices)
+                print('image_np Shape: {}'.format(image_np.shape))
+                print('batches Len: {}'.format(len(batches)))
+                print('batch Shape: {}'.format(i, batches[0].shape))
 
                 # acutal segmentation
                 for i in tqdm(range(len(batches))):
                     batch = batches[i]
                     [pred, softmax] = sess.run(['predicted_label/prediction:0','softmax/softmax:0'], feed_dict={'images_placeholder:0': batch})
+                    print("Prediction output shape: {}".format(pred.shape))
+                    print("Softmax    output shape: {}".format(softmax.shape))
+
                     istart = ijk_patch_indices[i][0][0]
                     iend = ijk_patch_indices[i][0][1]
                     jstart = ijk_patch_indices[i][0][2]
